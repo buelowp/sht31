@@ -1,5 +1,5 @@
 /*
- * sht31.h
+ * SHT31.h
  *
  *  Created on: Mar 2, 2019
  *      Author: Peter Buelow
@@ -19,10 +19,10 @@
 #include <sys/ioctl.h>
 #include <fcntl.h>
 
-class sht31 {
+class SHT31 {
 public:
-	sht31(int, int);
-	virtual ~sht31();
+	SHT31(int, int);
+	virtual ~SHT31();
 
 	bool deviceOpen();
 	void deviceClose();
@@ -30,6 +30,7 @@ public:
 	bool query(double*, double*, double*);
 
 private:
+	bool crcCheck(uint8_t*, int, uint8_t);
 	int m_bus;
 	int m_address;
 	int m_handle;

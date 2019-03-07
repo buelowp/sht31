@@ -1,5 +1,5 @@
 /*
- * sht31.cpp
+ * SHT31.cpp
  *
  *  Created on: Mar 2, 2019
  *      Author: pete
@@ -7,7 +7,7 @@
 
 #include "sht31.h"
 
-sht31::sht31(int bus, int address)
+SHT31::SHT31(int bus, int address)
 {
 	m_bus = bus;
 	m_address = address;
@@ -15,13 +15,13 @@ sht31::sht31(int bus, int address)
 	m_open = false;
 }
 
-sht31::~sht31()
+SHT31::~SHT31()
 {
 	if (m_open)
 		close(m_handle);
 }
 
-bool sht31::deviceOpen()
+bool SHT31::deviceOpen()
 {
 	char bus[32];
 	memset (bus, '\0', 32);
@@ -40,42 +40,66 @@ bool sht31::deviceOpen()
 	return m_open;
 }
 
-void sht31::deviceClose()
+void SHT31::deviceClose()
 {
 	if (m_open)
 		close(m_handle);
 }
 
-bool sht31::query(double *tempc, double *tempf, double *humidity)
+bool SHT31::query(double *tempc, double *tempf, double *humidity)
 {
-	char config[2] = {0};
-	char data[6] = {0};
+	uint8_t config[2] = {0};
+	uint8_t data[6] = {0};
 	int count = 0;
+	uint16_t tvalue = 0;
+	uint16_t hvalue = 0;
 
 	config[0] = 0x2C;
-	config[1] = 0x06;
+	config[1] = 0x0D;
 
 	if (m_open) {
 		write(m_handle, config, 2);
 
 		while (read(m_handle, data, 6) != 6) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(50));
+			std::cout << ".";
 			if (count++ == 10) {
-				std::cerr << __PRETTY_FUNCTION__ << ": Unable to read temp data";
+				std::cerr << __PRETTY_FUNCTION__ << ": Unable to read temp data" << std::endl;
 				return false;
 			}
 		}
 
-		*tempc = (((data[0] * 256) + data[1]) * 175.0) / 65535.0  - 45.0;
-		*tempf = (((data[0] * 256) + data[1]) * 315.0) / 65535.0 - 49.0;
-		*humidity = (((data[3] * 256) + data[4])) * 100.0 / 65535.0;
+		if (crcCheck(&data[0], 2, data[2])) {
+			tvalue = ((data[0] << 8) | (data[1] & 0xFF));
+		}
+		if (crcCheck(&data[3], 2, data[5])) {
+			hvalue = ((data[3] << 8) | (data[4] & 0xFF));
+		}
+		*tempc = -45.0 + (175.0 * (tvalue / (2^16 - 1)));
+		*tempf = -49.0 + (315.0 * (tvalue / (2^16 - 1)));
+		*humidity = 100.0 * (hvalue / (2^16 - 1));
 
 		return true;
 	}
 	return false;
 }
 
+bool SHT31::crcCheck(uint8_t *data, int len, uint8_t csum)
+{
+	const uint8_t POLYNOMIAL = 0x31;
+	uint8_t crc = 0xFF;
 
+	for (int j = len; j; --j ) {
+		crc ^= *data++;
 
-
-
+		for (int i = 8; i; --i ) {
+			crc = ( crc & 0x80 )
+				? (crc << 1) ^ POLYNOMIAL
+				: (crc << 1);
+		}
+	}
+	if (crc != csum) {
+		std::cerr << __PRETTY_FUNCTION__ << ": checksum mismatch. Got " << crc << " but I expected " << csum << std::endl;
+	}
+	return (crc == csum);
+}
